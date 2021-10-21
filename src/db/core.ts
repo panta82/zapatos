@@ -400,19 +400,31 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
       const columnNames = <Column[]>Object.keys(expression).sort();
 
       if (columnNames.length) {  // if the object is not empty
+        let firstField = true;
         result.text += '(';
         for (let i = 0, len = columnNames.length; i < len; i++) {
           const
             columnName = columnNames[i],
             columnValue = (<any>expression)[columnName];
-          if (i > 0) result.text += ' AND ';
+
+          if (columnValue === undefined) {
+            // Pretend undefineds are not there
+            continue;
+          }
+
+          if (firstField) {
+            firstField = false;
+          } else {
+            result.text += ' AND ';
+          }
           if (columnValue instanceof SQLFragment) {
             result.text += '(';
             this.compileExpression(columnValue, result, parentTable, columnName);
             result.text += ')';
 
           } else {
-            result.text += `"${columnName}" = `;
+            const assignOperator = columnValue === null ? 'IS' : '=';
+            result.text += `"${columnName}" ${assignOperator} `;
             this.compileExpression(columnValue instanceof ParentColumn ? columnValue : new Parameter(columnValue),
               result, parentTable, columnName);
           }
