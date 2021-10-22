@@ -1,6 +1,6 @@
 {
   "name": "@pantas-net/zapatos",
-  "version": "5.0.4",
+  "version": "5.0.5",
   "description": "Zero-Abstraction Postgres for TypeScript (temporary package until the main one is updated)",
   "homepage": "https://jawj.github.io/zapatos/",
   "repository": {
@@ -11,6 +11,7 @@
     "zapatos": "dist/generate/cli.js"
   },
   "scripts": {
+    "prepublishOnly": "npm run build",
     "lint": "eslint --ext .ts .",
     "build": "npx tsc && npx gen-esm-wrapper db db.mjs && npx gen-esm-wrapper generate generate.mjs",
     "version": "npm run lint && npm run build",
