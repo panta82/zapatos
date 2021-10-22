@@ -362,7 +362,7 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
       // a ColumnNames-wrapped object -> quoted names in a repeatable order
       // OR a ColumnNames-wrapped array -> quoted array values
       const columnNames = Array.isArray(expression.value) ? expression.value :
-        Object.keys(expression.value).sort();
+        Object.keys(expression.value).filter(key => (<any>expression.value)[key] !== undefined).sort();
       result.text += columnNames.map(k => `"${k}"`).join(', ');
 
     } else if (expression instanceof ColumnValues) {
@@ -383,11 +383,22 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
           columnNames = <Column[]>Object.keys(expression.value).sort(),
           columnValues = columnNames.map(k => (<any>expression.value)[k]);
 
+        let firstField = true;
         for (let i = 0, len = columnValues.length; i < len; i++) {
           const
             columnName = columnNames[i],
             columnValue = columnValues[i];
-          if (i > 0) result.text += ', ';
+          
+          if (columnValue === undefined) {
+            // Pretend undefineds are not there
+            continue;
+          }
+          
+          if (firstField) {
+            firstField = false;
+          } else {
+            result.text += ', ';
+          }
           if (columnValue instanceof SQLFragment ||
             columnValue instanceof Parameter ||
             columnValue === Default) this.compileExpression(columnValue, result, parentTable, columnName);
