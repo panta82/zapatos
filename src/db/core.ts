@@ -434,10 +434,12 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
             result.text += ')';
 
           } else {
-            const assignOperator = columnValue === null ? 'IS' : '=';
-            result.text += `"${columnName}" ${assignOperator} `;
-            this.compileExpression(columnValue instanceof ParentColumn ? columnValue : new Parameter(columnValue),
-              result, parentTable, columnName);
+            if (columnValue === null) {
+              result.text += `"${columnName}" IS NULL`;
+            } else {
+              result.text += `"${columnName}" = `;
+              this.compileExpression(columnValue instanceof ParentColumn ? columnValue : new Parameter(columnValue), result, parentTable, columnName);
+            }
           }
         }
         result.text += ')';
