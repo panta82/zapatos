@@ -1,5 +1,5 @@
 {
-  "name": "zapatos",
+  "name": "@pantas-net/zapatos",
   "version": "5.0.0",
   "description": "Zero-Abstraction Postgres for TypeScript",
   "homepage": "https://jawj.github.io/zapatos/",
