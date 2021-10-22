@@ -380,25 +380,14 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
 
       } else {
         const
-          columnNames = <Column[]>Object.keys(expression.value).sort(),
+          columnNames = <Column[]>Object.keys(expression.value).filter(key => (<any>expression.value)[key] !== undefined).sort(),
           columnValues = columnNames.map(k => (<any>expression.value)[k]);
 
-        let firstField = true;
         for (let i = 0, len = columnValues.length; i < len; i++) {
           const
             columnName = columnNames[i],
             columnValue = columnValues[i];
-          
-          if (columnValue === undefined) {
-            // Pretend undefineds are not there
-            continue;
-          }
-          
-          if (firstField) {
-            firstField = false;
-          } else {
-            result.text += ', ';
-          }
+          if (i > 0) result.text += ', ';
           if (columnValue instanceof SQLFragment ||
             columnValue instanceof Parameter ||
             columnValue === Default) this.compileExpression(columnValue, result, parentTable, columnName);
@@ -408,26 +397,15 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
 
     } else if (typeof expression === 'object') {
       // must be a Whereable object, so put together a WHERE clause
-      const columnNames = <Column[]>Object.keys(expression).sort();
+      const columnNames = <Column[]>Object.keys(expression).filter(key => (<any>expression.value)[key] !== undefined).sort();
 
       if (columnNames.length) {  // if the object is not empty
-        let firstField = true;
         result.text += '(';
         for (let i = 0, len = columnNames.length; i < len; i++) {
           const
             columnName = columnNames[i],
             columnValue = (<any>expression)[columnName];
-
-          if (columnValue === undefined) {
-            // Pretend undefineds are not there
-            continue;
-          }
-
-          if (firstField) {
-            firstField = false;
-          } else {
-            result.text += ' AND ';
-          }
+          if (i > 0) result.text += ' AND ';
           if (columnValue instanceof SQLFragment) {
             result.text += '(';
             this.compileExpression(columnValue, result, parentTable, columnName);
