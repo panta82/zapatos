@@ -1,11 +1,11 @@
 {
   "name": "@pantas-net/zapatos",
-  "version": "5.0.0",
-  "description": "Zero-Abstraction Postgres for TypeScript",
+  "version": "5.0.1",
+  "description": "Zero-Abstraction Postgres for TypeScript (temporary package until the main one is updated)",
   "homepage": "https://jawj.github.io/zapatos/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jawj/zapatos"
+    "url": "https://github.com/panta82/zapatos"
   },
   "bin": {
     "zapatos": "dist/generate/cli.js"
