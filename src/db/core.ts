@@ -408,7 +408,7 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
 
     } else if (typeof expression === 'object') {
       // must be a Whereable object, so put together a WHERE clause
-      const columnNames = <Column[]>Object.keys(expression).filter(key => (<any>expression.value)[key] !== undefined).sort();
+      const columnNames = <Column[]>Object.keys(expression).filter(key => (<any>expression)[key] !== undefined).sort();
 
       if (columnNames.length) {  // if the object is not empty
         result.text += '(';
