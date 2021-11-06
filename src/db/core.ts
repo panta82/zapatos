@@ -361,16 +361,8 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
     } else if (expression instanceof ColumnNames) {
       // a ColumnNames-wrapped object -> quoted names in a repeatable order
       // OR a ColumnNames-wrapped array -> quoted array values
-      let columnNames: (string | number)[];
-      if (Array.isArray(expression.value)) {
-        columnNames = expression.value;
-      } else {
-        const rawNames = Object.keys(expression.value);
-        columnNames = rawNames.filter(key => (<any>expression.value)[key] !== undefined).sort();
-        if (rawNames.length && !columnNames.length) {
-          throw new Error(`All properties in given object are undefined`);
-        }
-      }
+      const columnNames = Array.isArray(expression.value) ? expression.value :
+        Object.keys(expression.value).sort();
       result.text += columnNames.map(k => `"${k}"`).join(', ');
     } else if (expression instanceof ColumnValues) {
       // a ColumnValues-wrapped object OR array 
@@ -387,12 +379,8 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
 
       } else {
         const
-          rawNames = Object.keys(expression.value),
-          columnNames = <Column[]>rawNames.filter(key => (<any>expression.value)[key] !== undefined).sort(),
+          columnNames = <Column[]>Object.keys(expression.value).sort(),
           columnValues = columnNames.map(k => (<any>expression.value)[k]);
-          if (rawNames.length && !columnNames.length) {
-            throw new Error(`All properties in given object are undefined`);
-          }
         
         for (let i = 0, len = columnValues.length; i < len; i++) {
           const
