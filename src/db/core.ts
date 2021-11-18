@@ -163,15 +163,17 @@ export function raw(x: string) { return new DangerousRawString(x); }
  * Wraps either an array or object, and compiles to a quoted, comma-separated
  * list of array values (for use in a `SELECT` query) or object keys (for use
  * in an `INSERT`, `UPDATE` or `UPSERT` query, alongside `ColumnValues`).
+ * Table name can be provided to disambiguate the column names in SELECT queries.
  */
-export class ColumnNames<T> { constructor(public value: T) { } }
+export class ColumnNames<T, TTable extends Table> { constructor(public value: T, public tableName?: TTable) { } }
 /**
  * Returns a `ColumnNames` instance, wrapping either an array or an object.
  * `ColumnNames` compiles to a quoted, comma-separated list of array values (for
  * use in a `SELECT` query) or object keys (for use in an `INSERT`, `UDPATE` or
  * `UPSERT` query alongside a `ColumnValues`).
+ * Optionally, provide tableName to prefix each column name in the generated query.
  */
-export function cols<T>(x: T) { return new ColumnNames<T>(x); }
+export function cols<T, TTable extends Table = Table>(x: T, tableName?: TTable) { return new ColumnNames<T, TTable>(x, tableName); }
 
 /**
  * Compiles to a quoted, comma-separated list of object keys for use in an
@@ -198,7 +200,7 @@ export function parent<T extends Column = Column>(x: T) { return new ParentColum
 
 
 export type GenericSQLExpression = SQLFragment<any, any> | Parameter | DefaultType | DangerousRawString | SelfType;
-export type SQLExpression = Table | ColumnNames<Updatable | (keyof Updatable)[]> | ColumnValues<Updatable | any[]> | Whereable | Column | GenericSQLExpression;
+export type SQLExpression = Table | ColumnNames<Updatable | (keyof Updatable)[], Table> | ColumnValues<Updatable | any[]> | Whereable | Column | GenericSQLExpression;
 export type SQL = SQLExpression | SQLExpression[];
 
 export type Queryable = pg.ClientBase | pg.Pool;
@@ -381,8 +383,11 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
       // OR a ColumnNames-wrapped array -> quoted array values
       const columnNames = Array.isArray(expression.value) ? expression.value :
         Object.keys(expression.value).sort();
-      result.text += columnNames.map(k => escapeIdentifier(k)).join(', ');
-
+      result.text += columnNames.map(k => {
+        const prefix = expression.tableName ? `${escapeIdentifier(expression.tableName)}.` : ''; 
+        return prefix + escapeIdentifier(k);
+      }).join(', ');
+      
     } else if (expression instanceof ColumnValues) {
       // a ColumnValues-wrapped object OR array 
       // -> values (in ColumnNames-matching order, if applicable) punted as SQLFragments or Parameters
