@@ -204,7 +204,7 @@ export namespace ${rel.name} {
         'never'};
   export type Column = keyof Selectable;
   export type OnlyCols<T extends readonly Column[]> = Pick<Selectable, T[number]>;
-  export type SQLExpression = db.GenericSQLExpression | db.ColumnNames<Updatable | (keyof Updatable)[]> | db.ColumnValues<Updatable> | Table | Whereable | Column;
+  export type SQLExpression = db.GenericSQLExpression | db.ColumnNames<Updatable | (keyof Updatable)[], Table> | db.ColumnValues<Updatable> | Table | Whereable | Column;
   export type SQL = SQLExpression | SQLExpression[];
 }`;
   return tableDef;

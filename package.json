@@ -1,6 +1,6 @@
 {
   "name": "@pantas-net/zapatos",
-  "version": "5.0.9",
+  "version": "5.0.10",
   "description": "Zero-Abstraction Postgres for TypeScript (temporary package until the main one is updated)",
   "homepage": "https://jawj.github.io/zapatos/",
   "repository": {
