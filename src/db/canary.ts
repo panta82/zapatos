@@ -1,6 +1,6 @@
 /*
 Zapatos: https://jawj.github.io/zapatos/
-Copyright (C) 2020 - 2021 George MacKerron
+Copyright (C) 2020 - 2022 George MacKerron
 Released under the MIT licence: see LICENCE file
 */
 
@@ -9,4 +9,4 @@ Released under the MIT licence: see LICENCE file
  * generated schema format, in order to raise a type error and thereby force
  * schema regeneration.
  */
-export interface SchemaVersionCanary { version: 103 }
+export interface SchemaVersionCanary { version: 104 }

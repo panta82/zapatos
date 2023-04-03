@@ -24,6 +24,7 @@ export const escapeIdentifier = mod.escapeIdentifier;
 export const getConfig = mod.getConfig;
 export const insert = mod.insert;
 export const isDatabaseError = mod.isDatabaseError;
+export const mapWithSeparator = mod.mapWithSeparator;
 export const max = mod.max;
 export const min = mod.min;
 export const param = mod.param;

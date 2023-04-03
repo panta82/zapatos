@@ -1,11 +1,10 @@
 /*
 Zapatos: https://jawj.github.io/zapatos/
-Copyright (C) 2020 - 2021 George MacKerron
+Copyright (C) 2020 - 2022 George MacKerron
 Released under the MIT licence: see LICENCE file
 */
 
 import type * as pg from 'pg';
-import { performance } from 'perf_hooks';
 
 import { getConfig, SQLQuery } from './config';
 import { isPOJO, NoInfer } from './utils';
@@ -17,6 +16,9 @@ import type {
   Column,
 } from 'zapatos/schema';
 
+const timing = typeof performance === 'object' ?
+  () => performance.now() :
+  () => Date.now();
 
 // === symbols, types, wrapper classes and shortcuts ===
 
@@ -68,7 +70,7 @@ export type DateRangeString = RangeString<string>;
 export type NumberRangeString = RangeString<number | ''>;
 
 /**
- * `bytea` value representated as a hex string. Note: for large objects, use
+ * `bytea` value represented as a hex string. Note: for large objects, use
  * something like https://www.npmjs.com/package/pg-large-object instead.
  */
 export type ByteArrayString = `\\x${string}`;
@@ -182,7 +184,7 @@ export function cols<T, TTable extends Table = Table>(x: T, tableName?: TTable) 
 export class ColumnValues<T> { constructor(public value: T) { } }
 /**
  * Returns a ColumnValues instance, wrapping an object. ColumnValues compiles to
- * a  quoted, comma-separated list of object keys for use in an INSERT, UPDATE
+ * a quoted, comma-separated list of object keys for use in an INSERT, UPDATE
  * or UPSERT query alongside a `ColumnNames`.
  */
 export function vals<T>(x: T) { return new ColumnValues<T>(x); }
@@ -191,16 +193,16 @@ export function vals<T>(x: T) { return new ColumnValues<T>(x); }
  * Compiles to the name of the column it wraps in the table of the parent query.
  * @param value The column name
  */
-export class ParentColumn<T extends Column = Column> { constructor(public value: T) { } }
+export class ParentColumn<T extends Column | undefined = Column | undefined> { constructor(public value?: T) { } }
 /**
  * Returns a `ParentColumn` instance, wrapping a column name, which compiles to
  * that column name of the table of the parent query.
  */
-export function parent<T extends Column = Column>(x: T) { return new ParentColumn<T>(x); }
+export function parent<T extends Column | undefined = Column | undefined>(x?: T) { return new ParentColumn<T>(x); }
 
 
 export type GenericSQLExpression = SQLFragment<any, any> | Parameter | DefaultType | DangerousRawString | SelfType;
-export type SQLExpression = Table | ColumnNames<Updatable | (keyof Updatable)[], Table> | ColumnValues<Updatable | any[]> | Whereable | Column | GenericSQLExpression;
+export type SQLExpression = Table | ColumnNames<Updatable | (keyof Updatable)[], Table> | ColumnValues<Updatable | any[]> | Whereable | Column | ParentColumn | GenericSQLExpression;
 export type SQL = SQLExpression | SQLExpression[];
 
 export type Queryable = pg.ClientBase | pg.Pool;
@@ -219,7 +221,7 @@ export function sql<
   RunResult = pg.QueryResult['rows'],
   Constraint = never,
   >(literals: TemplateStringsArray, ...expressions: NoInfer<Interpolations>[]) {
-  return new SQLFragment<RunResult, Constraint>(Array.prototype.slice.apply(literals), expressions);
+  return new SQLFragment<RunResult, Constraint>(Array.prototype.slice.apply(literals), expressions  as SQL[]);
 }
 
 export function escapeIdentifier (identifier: string | number): string {
@@ -278,14 +280,14 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
   run = async (queryable: Queryable, force = false): Promise<RunResult> => {
     const
       query = this.compile(),
-      config = getConfig(),
+      { queryListener, resultListener } = getConfig(),
       txnId = (queryable as any)._zapatos?.txnId;
 
-    if (config.queryListener) config.queryListener(query, txnId);
+    if (queryListener) queryListener(query, txnId);
 
-    const startMs = performance.now();
+    let startMs: number | undefined, result;
+    if (resultListener) startMs = timing();
 
-    let result;
     if (!this.noop || force) {
       const qr = await queryable.query(query);
       result = this.runResultTransform(qr);
@@ -294,7 +296,7 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
       result = this.noopResult;
     }
 
-    if (config.resultListener) config.resultListener(result, txnId, performance.now() - startMs);
+    if (resultListener) resultListener(result, txnId, timing() - startMs!);
     return result;
   };
 
@@ -375,22 +377,29 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
     } else if (expression === self) {
       // alias to the latest column, if applicable
       if (!currentColumn) throw new Error(`The 'self' column alias has no meaning here`);
-      result.text += escapeIdentifier(currentColumn);
+      this.compileExpression(currentColumn, result);
 
     } else if (expression instanceof ParentColumn) {
-      // alias to the parent table (plus supplied column name) of a nested query, if applicable
+      // alias to the parent table (plus optional supplied column name) of a nested query, if applicable
       if (!parentTable) throw new Error(`The 'parent' table alias has no meaning here`);
-      result.text += `${escapeIdentifier(parentTable)}.${escapeIdentifier(expression.value)}`;
+      this.compileExpression(parentTable, result);
+      result.text += '.';
+      this.compileExpression(expression.value ?? currentColumn!, result);
 
     } else if (expression instanceof ColumnNames) {
       // a ColumnNames-wrapped object -> quoted names in a repeatable order
       // OR a ColumnNames-wrapped array -> quoted array values
       const columnNames = Array.isArray(expression.value) ? expression.value :
         Object.keys(expression.value).sort();
-      result.text += columnNames.map(k => {
-        const prefix = expression.tableName ? `${escapeIdentifier(expression.tableName)}.` : '';
-        return prefix + escapeIdentifier(k);
-      }).join(', ');
+
+      for (let i = 0, len = columnNames.length; i < len; i++) {
+        if (i > 0) result.text += ', ';
+        const columnName = String(columnNames[i]);
+        this.compileExpression(
+          expression.tableName ? `${expression.tableName}.${columnName}` : columnName,
+          result
+        );
+      }
 
     } else if (expression instanceof ColumnValues) {
       // a ColumnValues-wrapped object OR array
@@ -423,6 +432,8 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
       }
 
     } else if (typeof expression === 'object') {
+      if (expression === globalThis) throw new Error('Did you use `self` (the global object) where you meant `db.self` (the Zapatos value)? The global object cannot be embedded in a query.');
+
       // must be a Whereable object, so put together a WHERE clause
       const columnNames = <Column[]>Object.keys(expression).filter(key => (<any>expression)[key] !== undefined).sort();
 
@@ -442,8 +453,10 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
             if (columnValue === null) {
               result.text += `"${columnName}" IS NULL`;
             } else {
-              result.text += `${escapeIdentifier(columnName)} = `;
-              this.compileExpression(columnValue instanceof ParentColumn ? columnValue : new Parameter(columnValue), result, parentTable, columnName);
+              this.compileExpression(columnName, result);
+              result.text += ` = `;
+              this.compileExpression(columnValue instanceof ParentColumn ? columnValue : new Parameter(columnValue),
+                result, parentTable, columnName);
             }
           }
         }

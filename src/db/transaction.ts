@@ -1,6 +1,6 @@
 /*
 Zapatos: https://jawj.github.io/zapatos/
-Copyright (C) 2020 - 2021 George MacKerron
+Copyright (C) 2020 - 2022 George MacKerron
 Released under the MIT licence: see LICENCE file
 */
 
@@ -8,11 +8,12 @@ import * as pg from 'pg';
 import { isDatabaseError } from './pgErrors';
 import { wait } from './utils';
 import { sql, raw } from './core';
-import { getConfig } from "./config";
+import { getConfig } from './config';
+import type { Queryable } from './core';
 
 
 export enum IsolationLevel {
-  // these are the only meaningful values in Postgres: 
+  // these are the only meaningful values in Postgres:
   // see https://www.postgresql.org/docs/11/sql-set-transaction.html
   Serializable = "SERIALIZABLE",
   RepeatableRead = "REPEATABLE READ",
@@ -48,41 +49,60 @@ export type TxnClientForRepeatableReadRO = TxnClient<IsolationSatisfying<Isolati
 export type TxnClientForReadCommittedRO = TxnClient<IsolationSatisfying<IsolationLevel.ReadCommittedRO>>;
 export type TxnClientForSerializableRODeferrable = TxnClient<IsolationSatisfying<IsolationLevel.SerializableRODeferrable>>;
 
+
+function typeofQueryable(queryable: Queryable) {
+  if (queryable instanceof pg.Pool) return 'pool';
+  if (queryable instanceof pg.Client) return 'client';
+  if (pg.native !== null && queryable instanceof pg.native.Pool) return 'pool';
+  if (pg.native !== null && queryable instanceof pg.native.Client) return 'client';
+
+  // for pg < 8, and sometimes in 8.x for reasons that aren't clear, all the
+  // instanceof checks fail: then we resort to testing for the private variable
+  // `_connected`, which is defined (as a boolean) on clients (pure JS and
+  // native) but not on pools
+
+  if ((queryable as any)._connected === undefined) return 'pool';
+  return 'client';
+}
+
 let txnSeq = 0;
 
 /**
- * Provide a database client to the callback, whose queries are then wrapped in 
+ * Provide a database client to the callback, whose queries are then wrapped in
  * a database transaction. The transaction is committed, retried, or rolled back
- * as appropriate. 
- * @param txnClientOrPool The `pg.Pool` from which to check out the database
- * client or an appropriate transaction client to be passed through
+ * as appropriate.
+ * @param txnClientOrQueryable The `pg.Pool` from which to check out a client,
+ * a plain client, or an existing transaction client to be passed through
  * @param isolationLevel The desired isolation level (e.g.
  * `IsolationLevel.Serializable`)
  * @param callback A callback function that runs queries on the client provided
  * to it
  */
 export async function transaction<T, M extends IsolationLevel>(
-  txnClientOrPool: pg.Pool | TxnClient<IsolationSatisfying<M>>,
+  txnClientOrQueryable: Queryable | TxnClient<IsolationSatisfying<M>>,
   isolationLevel: M,
   callback: (client: TxnClient<IsolationSatisfying<M>>) => Promise<T>
 ): Promise<T> {
 
-  if (Object.prototype.hasOwnProperty.call(txnClientOrPool, '_zapatos')) {
-    // if txnClientOrPool is a TxnClient, just pass it through
-    return callback(txnClientOrPool as TxnClient<IsolationSatisfying<M>>);
+  if (Object.prototype.hasOwnProperty.call(txnClientOrQueryable, '_zapatos')) {
+    // if txnClientOrQueryable is a TxnClient, just pass it through
+    return callback(txnClientOrQueryable as TxnClient<IsolationSatisfying<M>>);
   }
 
   if (txnSeq >= Number.MAX_SAFE_INTEGER - 1) txnSeq = 0;  // wrap around
 
   const
     txnId = txnSeq++,
-    txnClient = await txnClientOrPool.connect() as TxnClient<M>,
+    clientIsOurs = typeofQueryable(txnClientOrQueryable) === 'pool',
+    txnClient = (clientIsOurs ? await txnClientOrQueryable.connect() : txnClientOrQueryable) as TxnClient<M>;
+
+  txnClient._zapatos = { isolationLevel, txnId };
+
+  const
     config = getConfig(),
     { transactionListener } = config,
     maxAttempts = config.transactionAttemptsMax,
     { minMs, maxMs } = config.transactionRetryDelay;
-
-  txnClient._zapatos = { isolationLevel, txnId };
 
   try {
     for (let attempt = 1; ; attempt++) {
@@ -95,7 +115,7 @@ export async function transaction<T, M extends IsolationLevel>(
 
         return result;
 
-      } catch (err) {
+      } catch (err: any) {
         await sql`ROLLBACK`.run(txnClient);
 
         // on trapping the following two rollback error codes, see:
@@ -122,77 +142,77 @@ export async function transaction<T, M extends IsolationLevel>(
 
   } finally {
     delete txnClient._zapatos;
-    txnClient.release();
+    if (clientIsOurs) txnClient.release();
   }
 }
 
 /**
  * Shortcut for `transaction` with isolation level `Serializable`.
- * @param txnClientOrPool The `pg.Pool` from which to check out the database 
- * client
+ * @param txnClientOrQueryable The `pg.Pool` from which to check out a client,
+ * a plain client, or an existing transaction client to be passed through
  * @param callback A callback function that runs queries on the client provided
  * to it
  */
-export async function serializable<T>(txnClientOrPool: pg.Pool | TxnClientForSerializable, callback: (client: TxnClientForSerializable) => Promise<T>) {
-  return transaction(txnClientOrPool, IsolationLevel.Serializable, callback);
+export async function serializable<T>(txnClientOrQueryable: Queryable | TxnClientForSerializable, callback: (client: TxnClientForSerializable) => Promise<T>) {
+  return transaction(txnClientOrQueryable, IsolationLevel.Serializable, callback);
 }
 /**
  * Shortcut for `transaction` with isolation level `RepeatableRead`.
- * @param txnClientOrPool The `pg.Pool` from which to check out the database 
- * client or an appropriate client to be passed through
+ * @param txnClientOrQueryable The `pg.Pool` from which to check out a client,
+ * a plain client, or an existing transaction client to be passed through
  * @param callback A callback function that runs queries on the client provided
  * to it
  */
-export async function repeatableRead<T>(txnClientOrPool: pg.Pool | TxnClientForRepeatableRead, callback: (client: TxnClientForRepeatableRead) => Promise<T>) {
-  return transaction(txnClientOrPool, IsolationLevel.RepeatableRead, callback);
+export async function repeatableRead<T>(txnClientOrQueryable: Queryable | TxnClientForRepeatableRead, callback: (client: TxnClientForRepeatableRead) => Promise<T>) {
+  return transaction(txnClientOrQueryable, IsolationLevel.RepeatableRead, callback);
 }
 /**
  * Shortcut for `transaction` with isolation level `ReadCommitted`.
- * @param txnClientOrPool The `pg.Pool` from which to check out the database 
- * client or an appropriate client to be passed through
- * @param callback A callback function that runs queries on the client provided 
+ * @param txnClientOrQueryable The `pg.Pool` from which to check out a client,
+ * a plain client, or an existing transaction client to be passed through
+ * @param callback A callback function that runs queries on the client provided
  * to it
  */
-export async function readCommitted<T>(txnClientOrPool: pg.Pool | TxnClientForReadCommitted, callback: (client: TxnClientForReadCommitted) => Promise<T>) {
-  return transaction(txnClientOrPool, IsolationLevel.ReadCommitted, callback);
+export async function readCommitted<T>(txnClientOrQueryable: Queryable | TxnClientForReadCommitted, callback: (client: TxnClientForReadCommitted) => Promise<T>) {
+  return transaction(txnClientOrQueryable, IsolationLevel.ReadCommitted, callback);
 }
 /**
  * Shortcut for `transaction` with isolation level `SerializableRO`.
- * @param txnClientOrPool The `pg.Pool` from which to check out the database
- * client or an appropriate client to be passed through
+ * @param txnClientOrQueryable The `pg.Pool` from which to check out a client,
+ * a plain client, or an existing transaction client to be passed through
  * @param callback A callback function that runs queries on the client provided
  * to it
  */
-export async function serializableRO<T>(txnClientOrPool: pg.Pool | TxnClientForSerializableRO, callback: (client: TxnClientForSerializableRO) => Promise<T>) {
-  return transaction(txnClientOrPool, IsolationLevel.SerializableRO, callback);
+export async function serializableRO<T>(txnClientOrQueryable: Queryable | TxnClientForSerializableRO, callback: (client: TxnClientForSerializableRO) => Promise<T>) {
+  return transaction(txnClientOrQueryable, IsolationLevel.SerializableRO, callback);
 }
 /**
  * Shortcut for `transaction` with isolation level `RepeatableReadRO`.
- * @param txnClientOrPool The `pg.Pool` from which to check out the database
- * client or an appropriate client to be passed through
+ * @param txnClientOrQueryable The `pg.Pool` from which to check out a client,
+ * a plain client, or an existing transaction client to be passed through
  * @param callback A callback function that runs queries on the client provided
  * to it
  */
-export async function repeatableReadRO<T>(txnClientOrPool: pg.Pool | TxnClientForRepeatableReadRO, callback: (client: TxnClientForRepeatableReadRO) => Promise<T>) {
-  return transaction(txnClientOrPool, IsolationLevel.RepeatableReadRO, callback);
+export async function repeatableReadRO<T>(txnClientOrQueryable: Queryable | TxnClientForRepeatableReadRO, callback: (client: TxnClientForRepeatableReadRO) => Promise<T>) {
+  return transaction(txnClientOrQueryable, IsolationLevel.RepeatableReadRO, callback);
 }
 /**
  * Shortcut for `transaction` with isolation level `ReadCommittedRO`.
- * @param txnClientOrPool The `pg.Pool` from which to check out the database
- * client or an appropriate client to be passed through
+ * @param txnClientOrQueryable The `pg.Pool` from which to check out a client,
+ * a plain client, or an existing transaction client to be passed through
  * @param callback A callback function that runs queries on the client provided
  * to it
  */
-export async function readCommittedRO<T>(txnClientOrPool: pg.Pool | TxnClientForReadCommittedRO, callback: (client: TxnClientForReadCommittedRO) => Promise<T>) {
-  return transaction(txnClientOrPool, IsolationLevel.ReadCommittedRO, callback);
+export async function readCommittedRO<T>(txnClientOrQueryable: Queryable | TxnClientForReadCommittedRO, callback: (client: TxnClientForReadCommittedRO) => Promise<T>) {
+  return transaction(txnClientOrQueryable, IsolationLevel.ReadCommittedRO, callback);
 }
 /**
  * Shortcut for `transaction` with isolation level `SerializableRODeferrable`.
- * @param txnClientOrPool The `pg.Pool` from which to check out the database
- * client or an appropriate client to be passed through
+ * @param txnClientOrQueryable The `pg.Pool` from which to check out a client,
+ * a plain client, or an existing transaction client to be passed through
  * @param callback A callback function that runs queries on the client provided
  * to it
  */
-export async function serializableRODeferrable<T>(txnClientOrPool: pg.Pool | TxnClientForSerializableRODeferrable, callback: (client: TxnClientForSerializableRODeferrable) => Promise<T>) {
-  return transaction(txnClientOrPool, IsolationLevel.SerializableRODeferrable, callback);
+export async function serializableRODeferrable<T>(txnClientOrQueryable: Queryable | TxnClientForSerializableRODeferrable, callback: (client: TxnClientForSerializableRODeferrable) => Promise<T>) {
+  return transaction(txnClientOrQueryable, IsolationLevel.SerializableRODeferrable, callback);
 }

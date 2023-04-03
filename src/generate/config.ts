@@ -1,6 +1,6 @@
 /*
 Zapatos: https://jawj.github.io/zapatos/
-Copyright (C) 2020 - 2021 George MacKerron
+Copyright (C) 2020 - 2022 George MacKerron
 Released under the MIT licence: see LICENCE file
 */
 
@@ -23,6 +23,7 @@ export interface OptionalConfig {
   customTypesTransform: 'PgMy_type' | 'my_type' | 'PgMyType' | ((s: string) => string);
   columnOptions: ColumnOptions;
   schemaJSDoc: boolean;
+  unprefixedSchema: string | null;
 }
 
 interface SchemaRules {
@@ -54,6 +55,7 @@ const defaultConfig: OptionalConfig = {
   customTypesTransform: 'PgMy_type',
   columnOptions: {},
   schemaJSDoc: true,
+  unprefixedSchema: 'public',
 };
 
 export const moduleRoot = () => {
