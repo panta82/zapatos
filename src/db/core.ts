@@ -56,7 +56,7 @@ export type Int8String = `${number}`;
 export type RangeString<Bound extends string | number> = `${'[' | '('}${Bound},${Bound}${']' | ')'}`;
 
 /**
- * `tsrange`, `tstzrange` or `daterange` value represented as a string. The 
+ * `tsrange`, `tstzrange` or `daterange` value represented as a string. The
  * format of the upper and lower bound `date`, `timestamp` or `timestamptz`
  * values depends on pg's `DateStyle` setting.
  */
@@ -76,22 +76,22 @@ export type ByteArrayString = `\\x${string}`;
 /**
  * Make a function `STRICT` in the Postgres sense — where it's an alias for
  * `RETURNS NULL ON NULL INPUT` — with appropriate typing.
- * 
+ *
  * For example, Zapatos' `toBuffer()` function is defined as:
- * 
+ *
  * ```
  * export const toBuffer = strict((ba: ByteArrayString) => Buffer.from(ba.slice(2), 'hex'));
  * ```
- * 
+ *
  * The generic input and output types `FnIn` and `FnOut` can be inferred from
  * `fn`, as seen above, but can also be explicitly narrowed. For example, to
- * convert specifically from `TimestampTzString` to Luxon's `DateTime`, but 
+ * convert specifically from `TimestampTzString` to Luxon's `DateTime`, but
  * pass through `null`s unchanged:
- * 
+ *
  * ```
  * const toDateTime = db.strict<db.TimestampTzString, DateTime>(DateTime.fromISO);
  * ```
- * 
+ *
  * @param fn The single-argument transformation function to be made strict.
  */
 export function strict<FnIn, FnOut>(fn: (x: FnIn) => FnOut):
@@ -103,45 +103,45 @@ export function strict<FnIn, FnOut>(fn: (x: FnIn) => FnOut):
 
 /**
  * Convert a `bytea` hex representation to a JavaScript `Buffer`. Note: for
- * large objects, use something like 
+ * large objects, use something like
  * [pg-large-object](https://www.npmjs.com/package/pg-large-object) instead.
- * 
+ *
  * @param ba The `ByteArrayString` hex representation (or `null`)
  */
 export const toBuffer = strict((ba: ByteArrayString) => Buffer.from(ba.slice(2), 'hex'));
 
 /**
- * Compiles to a numbered query parameter (`$1`, `$2`, etc) and adds the wrapped value 
+ * Compiles to a numbered query parameter (`$1`, `$2`, etc) and adds the wrapped value
  * at the appropriate position of the values array passed to `pg`.
  * @param x The value to be wrapped
  * @param cast Optional cast type. If a string, the parameter will be cast to
  * this type within the query e.g. `CAST($1 AS type)` instead of plain `$1`. If
- * `true`, the value will be JSON stringified and cast to `json` (irrespective 
- * of the configuration parameters `castArrayParamsToJson` and 
+ * `true`, the value will be JSON stringified and cast to `json` (irrespective
+ * of the configuration parameters `castArrayParamsToJson` and
  * `castObjectParamsToJson`). If `false`, the value will **not** be JSON-
- * stringified or cast to `json` (again irrespective of the configuration 
+ * stringified or cast to `json` (again irrespective of the configuration
  * parameters `castArrayParamsToJson` and `castObjectParamsToJson`).
  */
 export class Parameter<T = any> { constructor(public value: T, public cast?: boolean | string) { } }
 
 /**
- * Returns a `Parameter` instance, which compiles to a numbered query parameter 
+ * Returns a `Parameter` instance, which compiles to a numbered query parameter
  * (`$1`, `$2`, etc) and adds its wrapped value at the appropriate position of
  * the values array passed to `pg`.
  * @param x The value to be wrapped
- * @param cast Optional cast type. If a string, the parameter will be cast to 
+ * @param cast Optional cast type. If a string, the parameter will be cast to
  * this type within the query e.g. `CAST($1 AS type)` instead of plain `$1`. If
  * `true`, the value will be JSON stringified and cast to `json` (irrespective
- * of the configuration parameters `castArrayParamsToJson` and 
- * `castObjectParamsToJson`). If `false`, the value will **not** be JSON 
- * stringified or cast to `json` (again irrespective of the configuration 
+ * of the configuration parameters `castArrayParamsToJson` and
+ * `castObjectParamsToJson`). If `false`, the value will **not** be JSON
+ * stringified or cast to `json` (again irrespective of the configuration
  * parameters `castArrayParamsToJson` and `castObjectParamsToJson`).
  */
 export function param<T = any>(x: T, cast?: boolean | string) { return new Parameter(x, cast); }
 
 /**
  * 💥💥💣 **DANGEROUS** 💣💥💥
- * 
+ *
  * Compiles to the wrapped string value, as is, which may enable SQL injection
  * attacks.
  */
@@ -149,8 +149,8 @@ export class DangerousRawString { constructor(public value: string) { } }
 
 /**
  * 💥💥💣 **DANGEROUS** 💣💥💥
- * 
- * Remember [Little Bobby Tables](https://xkcd.com/327/). 
+ *
+ * Remember [Little Bobby Tables](https://xkcd.com/327/).
  * Did you want `db.param` instead?
  * ---
  * Returns a `DangerousRawString` instance, wrapping a string.
@@ -244,7 +244,7 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
 
   /**
    * When calling `run`, this function is applied to the object returned by `pg`
-   * to produce the result that is returned. By default, the `rows` array is 
+   * to produce the result that is returned. By default, the `rows` array is
    * returned — i.e. `(qr) => qr.rows` — but some shortcut functions alter this
    * in order to match their declared `RunResult` type.
    */
@@ -330,8 +330,12 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
       // Re-escape identifier even if it "seems" to be already escaped. A malicious user
       // could pass a string that starts with " but injects SQL code. Only trust escaped
       // identifiers that we escape ourselves.
-      result.text += escapeIdentifier(unescapeIdentifier(expression));
-
+      const [table, column] = String(expression).split('.');
+      if (table && column) {
+        result.text += escapeIdentifier(unescapeIdentifier(table)) + '.' + escapeIdentifier(unescapeIdentifier(column));
+      } else {
+        result.text += escapeIdentifier(unescapeIdentifier(expression));
+      }
     } else if (expression instanceof DangerousRawString) {
       // Little Bobby Tables passes straight through ...
       result.text += expression.value;
@@ -384,12 +388,12 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
       const columnNames = Array.isArray(expression.value) ? expression.value :
         Object.keys(expression.value).sort();
       result.text += columnNames.map(k => {
-        const prefix = expression.tableName ? `${escapeIdentifier(expression.tableName)}.` : ''; 
+        const prefix = expression.tableName ? `${escapeIdentifier(expression.tableName)}.` : '';
         return prefix + escapeIdentifier(k);
       }).join(', ');
-      
+
     } else if (expression instanceof ColumnValues) {
-      // a ColumnValues-wrapped object OR array 
+      // a ColumnValues-wrapped object OR array
       // -> values (in ColumnNames-matching order, if applicable) punted as SQLFragments or Parameters
 
       if (Array.isArray(expression.value)) {
@@ -405,7 +409,7 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
         const
           columnNames = <Column[]>Object.keys(expression.value).sort(),
           columnValues = columnNames.map(k => (<any>expression.value)[k]);
-        
+
         for (let i = 0, len = columnValues.length; i < len; i++) {
           const
             columnName = columnNames[i],
