@@ -215,7 +215,7 @@ export namespace ${rel.name} {
   export type Column = keyof Selectable;
   export type FQColumn = \`\${Table}.\${keyof Selectable}\`; 
   export type OnlyCols<T extends readonly Column[]> = Pick<Selectable, T[number]>;
-  export type SQLExpression = db.GenericSQLExpression | db.ColumnNames<Updatable | (keyof Updatable)[], Table> | db.ColumnValues<Updatable> | Table | Whereable | Column | db.ParentColumn | db.GenericSQLExpression | FQColumn;
+  export type SQLExpression = db.GenericSQLExpression | db.ColumnNames<Updatable | (keyof Updatable)[], Table> | db.ColumnValues<Updatable> | Table | Whereable | Column | db.ParentColumn | FQColumn;
   export type SQL = SQLExpression | SQLExpression[];
 }`;
   return tableDef;
@@ -250,6 +250,7 @@ export type Insertable = ${tableMappedUnion(tables, 'Insertable')};
 export type Updatable = ${tableMappedUnion(tables, 'Updatable')};
 export type UniqueIndex = ${tableMappedUnion(tables, 'UniqueIndex')};
 export type Column = ${tableMappedUnion(tables, 'Column')};
+export type FQColumn = ${tableMappedUnion(tables, 'FQColumn')};
 
 export type AllBaseTables = ${tableMappedArray(tables.filter(rel => rel.type === 'table'), 'Table')};
 export type AllForeignTables = ${tableMappedArray(tables.filter(rel => rel.type === 'fdw'), 'Table')};
@@ -280,6 +281,7 @@ export type Insertable = ${schemaMappedUnion(schemas, 'Insertable')};
 export type Updatable = ${schemaMappedUnion(schemas, 'Updatable')};
 export type UniqueIndex = ${schemaMappedUnion(schemas, 'UniqueIndex')};
 export type Column = ${schemaMappedUnion(schemas, 'Column')};
+export type FQColumn = ${schemaMappedUnion(schemas, 'FQColumn')};
 
 export type AllSchemas = [${schemas.map(s => `'${s}'`).join(', ')}];
 export type AllBaseTables = ${schemaMappedArray(schemas, 'AllBaseTables')};
