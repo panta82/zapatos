@@ -278,12 +278,16 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
    * @param force If true, force this query to hit the DB even if it's marked as a no-op
    */
   run = async (queryable: Queryable, force = false): Promise<RunResult> => {
-    const
-      query = this.compile(),
-      { queryListener, resultListener } = getConfig(),
-      txnId = (queryable as any)._zapatos?.txnId;
+    let query = this.compile();
+    const { queryListener, resultListener } = getConfig();
+    const txnId = (queryable as any)._zapatos?.txnId;
 
-    if (queryListener) queryListener(query, txnId);
+    if (queryListener) {
+      const updatedQuery = queryListener(query, txnId);
+      if (updatedQuery) {
+        query = updatedQuery;
+      }
+    }
 
     let startMs: number | undefined, result;
     if (resultListener) startMs = timing();
@@ -296,7 +300,9 @@ export class SQLFragment<RunResult = pg.QueryResult['rows'], Constraint = never>
       result = this.noopResult;
     }
 
-    if (resultListener) resultListener(result, txnId, timing() - startMs!);
+    if (resultListener) {
+      resultListener(result, txnId, timing() - startMs!, query);
+    }
     return result;
   };
 

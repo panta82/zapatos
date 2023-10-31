@@ -1,6 +1,6 @@
 {
   "name": "@pantas-net/zapatos",
-  "version": "6.1.411",
+  "version": "6.1.412",
   "description": "Zero-Abstraction Postgres for TypeScript (semi-permanent fork)",
   "homepage": "https://jawj.github.io/zapatos/",
   "repository": {
